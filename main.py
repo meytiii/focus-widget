@@ -9,7 +9,7 @@ import os
 import webbrowser
 
 # --- CONFIGURATION ---
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -33,15 +33,16 @@ class FocusApp:
         self.start_time = 0
         self.elapsed_time = 0
         self.stop_event = threading.Event()
+        self.timer_loop_id = None # To track the scheduled update
 
         # --- THEME COLORS ---
         self.colors = {
             "bg": "#1E1E1E",          # Dark Grey
             "fg": "#FFFFFF",          # White
             "accent": "#00FF41",      # Neon Green
-            "manual": "#00CCFF",      # Blue (for Manual Mode)
-            "pause": "#FFB000",       # Amber
-            "distracted": "#FF2A6D",  # Neon Red/Pink
+            "manual": "#00CCFF",      # Cyan (Manual Running)
+            "pause": "#FFB000",       # Amber (Pause)
+            "distracted": "#FF2A6D",  # Neon Red (Distracted)
             "button": "#333333",      # Button Grey
             "button_text": "#FFFFFF",
             "stop": "#d9534f"         # Red
@@ -61,7 +62,7 @@ class FocusApp:
         self.status_icon = ttk.Label(self.status_frame, text="⚪", style="StatusIcon.TLabel")
         self.status_icon.pack(side="left", padx=10)
         
-        self.status_text = ttk.Label(self.status_frame, text="System Ready", style="StatusText.TLabel")
+        self.status_text = ttk.Label(self.status_frame, text="Checking Camera...", style="StatusText.TLabel")
         self.status_text.pack(side="left")
 
         # 2. Timer Display
@@ -79,14 +80,15 @@ class FocusApp:
         # Stop Button (Reset)
         self.stop_btn = ttk.Button(self.btn_frame, text="⏹", command=self.stop_session, style="Stop.TButton", width=5)
         self.stop_btn.pack(side="left", padx=(0, 5))
-        self.stop_btn.state(['disabled']) # Start disabled
+        self.stop_btn.state(['disabled']) 
 
         # About Button
         self.about_btn = ttk.Button(self.btn_frame, text="?", command=self.show_about, style="Subtle.TButton", width=4)
         self.about_btn.pack(side="right", padx=(5, 0))
 
         # --- HARDWARE SETUP ---
-        self.init_camera()
+        # Run init in a separate thread so app opens instantly
+        threading.Thread(target=self.init_camera, daemon=True).start()
 
         # --- APP LOOP ---
         self.update_gui_timer()
@@ -102,7 +104,7 @@ class FocusApp:
         style.configure("StatusText.TLabel", background=self.colors["bg"], foreground=self.colors["fg"], font=("Segoe UI", 14, "bold"))
         style.configure("Timer.TLabel", background=self.colors["bg"], foreground=self.colors["accent"], font=("Consolas", 42, "bold"))
         
-        # Start/Pause Button
+        # Action Button (Start/Pause)
         style.configure("Action.TButton", 
                         background=self.colors["accent"], 
                         foreground="#000000", 
@@ -116,10 +118,9 @@ class FocusApp:
                         foreground=self.colors["stop"], 
                         font=("Segoe UI", 14, "bold"),
                         borderwidth=0)
-        # Add visual feedback for disabled state
         style.map("Stop.TButton", 
-                  background=[("active", "#444444"), ("disabled", "#2a2a2a")],
-                  foreground=[("disabled", "#555555")])
+                  background=[("active", "#444444"), ("disabled", "#252525")],
+                  foreground=[("disabled", "#444444")])
 
         # Subtle Button
         style.configure("Subtle.TButton", 
@@ -138,7 +139,7 @@ class FocusApp:
         try:
             self.cap = cv2.VideoCapture(0)
             if not self.cap.isOpened():
-                raise Exception("Camera index 0 not found")
+                raise Exception("No camera found")
             
             self.camera_available = True
             
@@ -150,48 +151,57 @@ class FocusApp:
 
             self.cv_thread = threading.Thread(target=self.detect_focus_loop, daemon=True)
             self.cv_thread.start()
+            
+            # If successful:
+            self.root.after(0, lambda: self.reset_ui_status("System Ready", "⚪", "#888888"))
 
         except Exception as e:
             print(f"Camera Error: {e}")
             self.camera_available = False
-            self.status_text.config(text="MANUAL MODE")
-            self.status_icon.config(text="📷🚫", foreground="orange")
-            # In manual mode, we default focused to True so timer works
-            self.is_focused = True 
+            self.is_focused = True # Default to True so Manual Mode works
+            # Set to "Ready" look (White Circle) instead of Warning look
+            self.root.after(0, lambda: self.reset_ui_status("Manual Ready", "⚪", "#888888"))
+
+    def reset_ui_status(self, text, icon, color):
+        """Helper to reset the status header safely from any thread."""
+        self.status_text.config(text=text, foreground=self.colors["fg"])
+        self.status_icon.config(text=icon, foreground=color)
 
     def toggle_session(self):
         if self.is_running:
-            # === PAUSE ACTION ===
+            # === PAUSE ===
             self.is_running = False
             self.toggle_btn.config(text="RESUME ▶", background=self.colors["accent"])
             self.status_text.config(text="PAUSED", foreground=self.colors["fg"])
             self.status_icon.config(text="⏸️", foreground="orange")
+            # Keep Stop button enabled
         else:
-            # === START ACTION ===
+            # === START ===
             self.is_running = True
             self.start_time = time.time() - self.elapsed_time
-            
-            # Update Buttons
             self.toggle_btn.config(text="PAUSE ❚❚", background=self.colors["pause"])
-            self.stop_btn.state(['!disabled']) # Enable Stop Button
+            self.stop_btn.state(['!disabled']) # ENABLE STOP BUTTON
 
     def stop_session(self):
-        """Resets the timer completely."""
+        """Resets the app to the main menu state."""
         self.is_running = False
         self.elapsed_time = 0
         self.start_time = 0
         
-        # Reset UI
+        # Reset Timer text
         self.timer_label.config(text="00:00:00", foreground=self.colors["accent"])
-        self.toggle_btn.config(text="START ▶", background=self.colors["accent"])
-        self.stop_btn.state(['disabled']) # Disable Stop Button
         
+        # Reset Main Button
+        self.toggle_btn.config(text="START ▶", background=self.colors["accent"])
+        
+        # Disable Stop Button
+        self.stop_btn.state(['disabled'])
+        
+        # Reset Status Header based on mode
         if self.camera_available:
-            self.status_text.config(text="System Ready", foreground=self.colors["fg"])
-            self.status_icon.config(text="⚪", foreground="#888888")
+            self.reset_ui_status("System Ready", "⚪", "#888888")
         else:
-            self.status_text.config(text="MANUAL MODE", foreground=self.colors["fg"])
-            self.status_icon.config(text="📷🚫", foreground="orange")
+            self.reset_ui_status("Manual Ready", "⚪", "#888888") # Looks just like System Ready
 
     def detect_focus_loop(self):
         while not self.stop_event.is_set():
@@ -217,34 +227,32 @@ class FocusApp:
 
     def update_gui_timer(self):
         if self.is_running:
-            # Calculate Time
             self.elapsed_time = time.time() - self.start_time
             
-            # --- STATUS DISPLAY LOGIC ---
             if self.is_focused:
+                # CAMERA MODE or MANUAL MODE
                 if self.camera_available:
                     self.status_text.config(text="FOCUSED", foreground=self.colors["accent"])
                     self.status_icon.config(text="👁️", foreground=self.colors["accent"])
                     self.timer_label.configure(foreground=self.colors["accent"])
                 else:
-                    # FIX: Explicitly show Manual Active status
+                    # Explicit Blue text for Manual Running
                     self.status_text.config(text="MANUAL: ACTIVE", foreground=self.colors["manual"])
                     self.status_icon.config(text="⏱️", foreground=self.colors["manual"])
                     self.timer_label.configure(foreground=self.colors["manual"])
             else:
-                # Distracted (Only happens if camera is available and user looks away)
-                # In manual mode, is_focused is always True, so this won't trigger there.
+                # DISTRACTED (Camera only)
                 self.start_time = time.time() - self.elapsed_time # Pause internal timer
                 self.status_text.config(text="DISTRACTED", foreground=self.colors["distracted"])
                 self.status_icon.config(text="❌", foreground=self.colors["distracted"])
                 self.timer_label.configure(foreground=self.colors["distracted"])
 
-            # Format Time
             total_seconds = int(self.elapsed_time)
             hours, remainder = divmod(total_seconds, 3600)
             mins, secs = divmod(remainder, 60)
             self.timer_label.config(text=f"{hours:02}:{mins:02}:{secs:02}")
         
+        # Loop
         self.root.after(100, self.update_gui_timer)
 
     def show_about(self):
