@@ -8,6 +8,9 @@ import sys
 import os
 import webbrowser
 
+# --- CONFIGURATION ---
+APP_VERSION = "1.0.1"
+
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     try:
@@ -19,8 +22,8 @@ def resource_path(relative_path):
 class FocusApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Focus Widget 🎯")
-        self.root.geometry("420x320")
+        self.root.title(f"Focus Widget v{APP_VERSION} 🎯")
+        self.root.geometry("420x340") # Increased height slightly for new button
         self.root.resizable(False, False)
         
         # --- APP STATE ---
@@ -35,23 +38,23 @@ class FocusApp:
         self.colors = {
             "bg": "#1E1E1E",          # Dark Grey
             "fg": "#FFFFFF",          # White
-            "accent": "#00FF41",      # Neon Green (Matrix style)
+            "accent": "#00FF41",      # Neon Green
             "distracted": "#FF2A6D",  # Neon Red/Pink
             "button": "#333333",      # Button Grey
-            "button_text": "#FFFFFF"
+            "button_text": "#FFFFFF",
+            "stop": "#d9534f"         # Red for Stop button
         }
         
         self.root.configure(bg=self.colors["bg"])
         self.setup_styles()
 
         # --- GUI LAYOUT ---
-        # Main Container
         self.main_frame = ttk.Frame(root, style="Main.TFrame", padding=20)
         self.main_frame.pack(fill="both", expand=True)
 
         # 1. Header (Status)
         self.status_frame = ttk.Frame(self.main_frame, style="Main.TFrame")
-        self.status_frame.pack(pady=(10, 20))
+        self.status_frame.pack(pady=(10, 15))
         
         self.status_icon = ttk.Label(self.status_frame, text="⚪", style="StatusIcon.TLabel")
         self.status_icon.pack(side="left", padx=10)
@@ -63,13 +66,20 @@ class FocusApp:
         self.timer_label = ttk.Label(self.main_frame, text="00:00:00", style="Timer.TLabel")
         self.timer_label.pack(pady=10)
 
-        # 3. Footer (Buttons)
+        # 3. Control Buttons Frame
         self.btn_frame = ttk.Frame(self.main_frame, style="Main.TFrame")
         self.btn_frame.pack(side="bottom", pady=10, fill="x")
 
-        self.toggle_btn = ttk.Button(self.btn_frame, text="START FOCUS ▶", command=self.toggle_session, style="Action.TButton")
+        # Toggle Button (Start/Pause)
+        self.toggle_btn = ttk.Button(self.btn_frame, text="START ▶", command=self.toggle_session, style="Action.TButton")
         self.toggle_btn.pack(side="left", expand=True, fill="x", padx=(0, 5))
 
+        # Stop Button (Reset) - NEW
+        self.stop_btn = ttk.Button(self.btn_frame, text="⏹", command=self.stop_session, style="Stop.TButton", width=5)
+        self.stop_btn.pack(side="left", padx=(0, 5))
+        self.stop_btn.state(['disabled']) # Disabled initially
+
+        # About Button
         self.about_btn = ttk.Button(self.btn_frame, text="?", command=self.show_about, style="Subtle.TButton", width=4)
         self.about_btn.pack(side="right", padx=(5, 0))
 
@@ -81,24 +91,29 @@ class FocusApp:
 
     def setup_styles(self):
         style = ttk.Style()
-        style.theme_use('clam') # 'clam' allows us to change button colors easily
+        style.theme_use('clam')
         
-        # Frames and Backgrounds
         style.configure("Main.TFrame", background=self.colors["bg"])
         
-        # Text Styles
         style.configure("StatusIcon.TLabel", background=self.colors["bg"], foreground="#888888", font=("Segoe UI Emoji", 24))
         style.configure("StatusText.TLabel", background=self.colors["bg"], foreground=self.colors["fg"], font=("Segoe UI", 14, "bold"))
         style.configure("Timer.TLabel", background=self.colors["bg"], foreground=self.colors["accent"], font=("Consolas", 42, "bold"))
         
-        # Button Styles
+        # Start/Pause Button
         style.configure("Action.TButton", 
                         background=self.colors["accent"], 
                         foreground="#000000", 
                         font=("Segoe UI", 11, "bold"),
-                        borderwidth=0,
-                        focuscolor="none")
-        style.map("Action.TButton", background=[("active", "#32CD32")]) # Darker green on hover
+                        borderwidth=0)
+        style.map("Action.TButton", background=[("active", "#32CD32")])
+
+        # Stop Button Style
+        style.configure("Stop.TButton", 
+                        background=self.colors["button"], 
+                        foreground=self.colors["stop"], 
+                        font=("Segoe UI", 12, "bold"),
+                        borderwidth=0)
+        style.map("Stop.TButton", background=[("active", "#444444")])
 
         style.configure("Subtle.TButton", 
                         background=self.colors["button"], 
@@ -106,58 +121,72 @@ class FocusApp:
                         font=("Segoe UI", 11, "bold"),
                         borderwidth=0)
 
-        # Popup Styles (for About window)
         style.configure("Popup.TFrame", background=self.colors["bg"])
         style.configure("PopupTitle.TLabel", background=self.colors["bg"], foreground=self.colors["accent"], font=("Segoe UI", 16, "bold"))
         style.configure("PopupText.TLabel", background=self.colors["bg"], foreground="#CCCCCC", font=("Segoe UI", 10))
         style.configure("Link.TLabel", background=self.colors["bg"], foreground="#4da6ff", font=("Segoe UI", 10, "underline"))
 
     def init_camera(self):
-        """Tries to initialize the camera. If it fails, falls back to manual mode."""
         try:
-            # Try index 0, then 1 (sometimes external cams are 1)
             self.cap = cv2.VideoCapture(0)
             if not self.cap.isOpened():
                 raise Exception("Camera index 0 not found")
             
             self.camera_available = True
             
-            # Setup MediaPipe only if camera works
             self.mp_face_mesh = mp.solutions.face_mesh
             self.face_mesh = self.mp_face_mesh.FaceMesh(
                 max_num_faces=1, refine_landmarks=True,
                 min_detection_confidence=0.5, min_tracking_confidence=0.5
             )
 
-            # Start Thread
             self.cv_thread = threading.Thread(target=self.detect_focus_loop, daemon=True)
             self.cv_thread.start()
 
         except Exception as e:
             print(f"Camera Error: {e}")
             self.camera_available = False
-            self.status_text.config(text="No Camera Found")
+            self.status_text.config(text="Manual Mode")
             self.status_icon.config(text="📷🚫", foreground="orange")
-            # If no camera, we default 'is_focused' to True so the timer works manually
             self.is_focused = True 
 
     def toggle_session(self):
         if self.is_running:
-            # STOP
+            # PAUSE ACTION
             self.is_running = False
             self.toggle_btn.config(text="RESUME ▶", background=self.colors["accent"])
             self.status_text.config(text="Paused", foreground=self.colors["fg"])
             self.status_icon.config(text="⏸️", foreground="orange")
         else:
-            # START
+            # START ACTION
             self.is_running = True
             self.start_time = time.time() - self.elapsed_time
-            self.toggle_btn.config(text="PAUSE ❚❚", background="#FFB000") # Amber for pause
+            self.toggle_btn.config(text="PAUSE ❚❚", background="#FFB000")
+            self.stop_btn.state(['!disabled']) # Enable stop button
+
+    def stop_session(self):
+        """Resets the timer completely."""
+        self.is_running = False
+        self.elapsed_time = 0
+        self.start_time = 0
+        
+        # Reset UI
+        self.timer_label.config(text="00:00:00", foreground=self.colors["accent"])
+        self.toggle_btn.config(text="START ▶", background=self.colors["accent"])
+        self.stop_btn.state(['disabled']) # Disable stop button
+        
+        if self.camera_available:
+            self.status_text.config(text="System Ready", foreground=self.colors["fg"])
+            self.status_icon.config(text="⚪", foreground="#888888")
+        else:
+            self.status_text.config(text="Manual Mode", foreground=self.colors["fg"])
+            self.status_icon.config(text="📷🚫", foreground="orange")
 
     def detect_focus_loop(self):
         while not self.stop_event.is_set():
             if not self.camera_available:
-                return # Stop thread if no camera
+                time.sleep(1) # Just wait if no camera
+                continue
 
             ret, frame = self.cap.read()
             if not ret:
@@ -177,25 +206,23 @@ class FocusApp:
 
     def update_gui_timer(self):
         if self.is_running:
-            # If Camera is available, rely on is_focused. 
-            # If NO Camera, we assume 'True' so it acts like a normal timer.
             if self.is_focused:
                 self.elapsed_time = time.time() - self.start_time
                 
                 if self.camera_available:
                     self.status_text.config(text="FOCUSED", foreground=self.colors["accent"])
                     self.status_icon.config(text="👁️", foreground=self.colors["accent"])
-                    self.timer_label.configure(foreground=self.colors["accent"])
                 else:
-                    self.status_text.config(text="MANUAL MODE", foreground=self.colors["accent"])
+                    self.status_text.config(text="RUNNING", foreground=self.colors["accent"])
+                    self.status_icon.config(text="⏱️", foreground=self.colors["accent"])
+                
+                self.timer_label.configure(foreground=self.colors["accent"])
             else:
-                # Distracted logic
                 self.start_time = time.time() - self.elapsed_time
                 self.status_text.config(text="DISTRACTED", foreground=self.colors["distracted"])
                 self.status_icon.config(text="❌", foreground=self.colors["distracted"])
                 self.timer_label.configure(foreground=self.colors["distracted"])
 
-            # Format Time
             total_seconds = int(self.elapsed_time)
             hours, remainder = divmod(total_seconds, 3600)
             mins, secs = divmod(remainder, 60)
@@ -214,8 +241,8 @@ class FocusApp:
             about_win.iconbitmap(resource_path("icon.ico"))
         except: pass
 
-        # Content
-        ttk.Label(about_win, text="Focus Widget v1.0", style="PopupTitle.TLabel").pack(pady=(30, 5))
+        # Content using APP_VERSION
+        ttk.Label(about_win, text=f"Focus Widget v{APP_VERSION}", style="PopupTitle.TLabel").pack(pady=(30, 5))
         ttk.Label(about_win, text="Made by MeyTiii", style="PopupText.TLabel").pack(pady=2)
 
         link_frame = ttk.Frame(about_win, style="Popup.TFrame")
@@ -237,8 +264,6 @@ class FocusApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    
-    # Try to set icon immediately
     try:
         icon_path = resource_path("icon.ico")
         root.iconbitmap(icon_path)
