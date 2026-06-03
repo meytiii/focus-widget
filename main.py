@@ -33,18 +33,18 @@ class FocusApp:
         self.start_time = 0
         self.elapsed_time = 0
         self.stop_event = threading.Event()
-        self.timer_loop_id = None # To track the scheduled update
+        self.timer_loop_id = None
 
         # --- THEME COLORS ---
         self.colors = {
             "bg": "#1E1E1E",          # Dark Grey
             "fg": "#FFFFFF",          # White
             "accent": "#00FF41",      # Neon Green
-            "manual": "#00CCFF",      # Cyan (Manual Running)
-            "pause": "#FFB000",       # Amber (Pause)
-            "distracted": "#FF2A6D",  # Neon Red (Distracted)
+            "manual": "#00CCFF",      # Cyan
+            "pause": "#FFB000",       # Amber
+            "distracted": "#FF2A6D",  # Neon Red
             "button": "#333333",      # Button Grey
-            "button_text": "#FFFFFF",
+            "button_text": "#FFFFFF", # White
             "stop": "#d9534f"         # Red
         }
         
@@ -55,7 +55,7 @@ class FocusApp:
         self.main_frame = ttk.Frame(root, style="Main.TFrame", padding=20)
         self.main_frame.pack(fill="both", expand=True)
 
-        # 1. Header (Status)
+        # 1. Header
         self.status_frame = ttk.Frame(self.main_frame, style="Main.TFrame")
         self.status_frame.pack(pady=(10, 15))
         
@@ -87,7 +87,6 @@ class FocusApp:
         self.about_btn.pack(side="right", padx=(5, 0))
 
         # --- HARDWARE SETUP ---
-        # Run init in a separate thread so app opens instantly
         threading.Thread(target=self.init_camera, daemon=True).start()
 
         # --- APP LOOP ---
@@ -158,8 +157,7 @@ class FocusApp:
         except Exception as e:
             print(f"Camera Error: {e}")
             self.camera_available = False
-            self.is_focused = True # Default to True so Manual Mode works
-            # Set to "Ready" look (White Circle) instead of Warning look
+            self.is_focused = True
             self.root.after(0, lambda: self.reset_ui_status("Manual Ready", "⚪", "#888888"))
 
     def reset_ui_status(self, text, icon, color):
@@ -174,13 +172,12 @@ class FocusApp:
             self.toggle_btn.config(text="RESUME ▶", background=self.colors["accent"])
             self.status_text.config(text="PAUSED", foreground=self.colors["fg"])
             self.status_icon.config(text="⏸️", foreground="orange")
-            # Keep Stop button enabled
         else:
             # === START ===
             self.is_running = True
             self.start_time = time.time() - self.elapsed_time
             self.toggle_btn.config(text="PAUSE ❚❚", background=self.colors["pause"])
-            self.stop_btn.state(['!disabled']) # ENABLE STOP BUTTON
+            self.stop_btn.state(['!disabled'])
 
     def stop_session(self):
         """Resets the app to the main menu state."""
@@ -188,21 +185,16 @@ class FocusApp:
         self.elapsed_time = 0
         self.start_time = 0
         
-        # Reset Timer text
         self.timer_label.config(text="00:00:00", foreground=self.colors["accent"])
         
-        # Reset Main Button
         self.toggle_btn.config(text="START ▶", background=self.colors["accent"])
         
-        # Disable Stop Button
         self.stop_btn.state(['disabled'])
         
-        # Reset Status Header based on mode
         if self.camera_available:
             self.reset_ui_status("System Ready", "⚪", "#888888")
         else:
-            self.reset_ui_status("Manual Ready", "⚪", "#888888") # Looks just like System Ready
-
+            self.reset_ui_status("Manual Ready", "⚪", "#888888")
     def detect_focus_loop(self):
         while not self.stop_event.is_set():
             if not self.camera_available:
@@ -230,19 +222,16 @@ class FocusApp:
             self.elapsed_time = time.time() - self.start_time
             
             if self.is_focused:
-                # CAMERA MODE or MANUAL MODE
                 if self.camera_available:
                     self.status_text.config(text="FOCUSED", foreground=self.colors["accent"])
                     self.status_icon.config(text="👁️", foreground=self.colors["accent"])
                     self.timer_label.configure(foreground=self.colors["accent"])
                 else:
-                    # Explicit Blue text for Manual Running
                     self.status_text.config(text="MANUAL: ACTIVE", foreground=self.colors["manual"])
                     self.status_icon.config(text="⏱️", foreground=self.colors["manual"])
                     self.timer_label.configure(foreground=self.colors["manual"])
             else:
-                # DISTRACTED (Camera only)
-                self.start_time = time.time() - self.elapsed_time # Pause internal timer
+                self.start_time = time.time() - self.elapsed_time
                 self.status_text.config(text="DISTRACTED", foreground=self.colors["distracted"])
                 self.status_icon.config(text="❌", foreground=self.colors["distracted"])
                 self.timer_label.configure(foreground=self.colors["distracted"])
@@ -252,7 +241,6 @@ class FocusApp:
             mins, secs = divmod(remainder, 60)
             self.timer_label.config(text=f"{hours:02}:{mins:02}:{secs:02}")
         
-        # Loop
         self.root.after(100, self.update_gui_timer)
 
     def show_about(self):
