@@ -1,2 +1,18 @@
-py -3.11 -m venv venv
-.\venv\Scripts\activate
+# 1. Create virtual environment (Python 3.10 - 3.13):
+py -3.13 -m venv venv
+# or with default python:
+python -m venv venv
+
+# 2. Activate virtual environment:
+# In PowerShell:
+.\venv\Scripts\Activate.ps1
+# (If script execution is disabled in PowerShell, run once: Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass)
+
+# In Command Prompt (CMD):
+.\venv\Scripts\activate.bat
+
+# 3. Install dependencies:
+pip install -r requirements.txt
+
+# 4. Run Focus Widget:
+python main.py

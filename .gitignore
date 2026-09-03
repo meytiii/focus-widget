@@ -205,3 +205,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Local User Data
+focus_data.json
+test_focus_data.json
+face_landmarker.task
