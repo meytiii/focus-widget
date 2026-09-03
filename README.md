@@ -1,86 +1,84 @@
-# Focus Widget 🎯
+# Focus Widget
 
-> A smart attention-tracking productivity timer that pauses automatically when you look away.
+A desktop timer that pauses automatically when you look away from your screen.
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
 ![OpenCV](https://img.shields.io/badge/Computer_Vision-OpenCV-green)
 ![MediaPipe](https://img.shields.io/badge/AI-MediaPipe-orange)
 ![License](https://img.shields.io/badge/License-MIT-purple)
 
-**Focus Widget** is an offline, privacy-first desktop application designed to keep you in the flow. It leverages your webcam, **MediaPipe Face Mesh**, and **solvePnP 3D pose estimation** to detect your real-time attention. If you turn your head, look away, or leave your desk, the timer pauses smoothly after a grace period. When you refocus, it resumes instantly.
+Focus Widget tracks your attention using your webcam. It estimates head rotation (yaw and pitch) and iris position using MediaPipe Face Mesh and OpenCV. When you look away, turn your head, or leave your desk, the timer pauses. When you return your gaze to the screen, it resumes.
+
+All video processing runs locally on your CPU. Video frames are never recorded, saved, or transmitted.
 
 ---
 
-## ✨ Features
+## Features
 
-| Feature | Description |
-| :--- | :--- |
-| 🎯 **3D Head Pose & Gaze Tracking** | Calculates 3D head rotation (Yaw & Pitch) and iris gaze direction to verify true screen attention. |
-| 🛡️ **Smart Grace Period** | 2.0-second debounce buffer ensures natural blinks and quick glances at your keyboard never cause jarring pauses. |
-| ⏱️ **Trio Timer Modes** | **Stopwatch** (continuous deep work), **Pomodoro** (25m work / 5m break cycles), and **Custom Countdown** targets. |
-| ☕ **Auto-Pause During Breaks** | In Pomodoro mode, tracking automatically turns off during breaks so you can stretch and relax freely. |
-| 🗗 **Floating Mini-Widget** | Minimize the dashboard into an always-on-top, draggable compact pill with live timer, pulse dot, and controls. |
-| 📷 **On-Demand Calibration** | Toggleable live 3D pose axis and face mesh visualizer to calibrate your angle and verify detection. |
-| 🔔 **Synthesized Audio Chimes** | Pleasant bell chimes for session completion and gentle distraction nudges with master mute (zero extra dependencies). |
-| 📊 **Daily Focus Metrics** | Automatically logs daily focused hours, distraction time, focus score percentage, and completed Pomodoros in a local JSON file. |
-| 🔒 **100% Offline & Private** | All video processing runs strictly on your local CPU. Frames are never stored or sent anywhere. |
+- **Attention tracking:** Uses 3D head pose estimation and iris position to determine whether you are looking at your screen.
+- **Grace period:** A configurable 2-second buffer prevents blinks and brief keyboard checks from interrupting your session.
+- **Three timer modes:** Standard count-up stopwatch, Pomodoro intervals with customizable work and break lengths, and a target countdown timer.
+- **Break handling:** Attention tracking turns off automatically during Pomodoro breaks so you can step away without triggering distraction alerts.
+- **Mini-widget:** Collapses the main window into a small, draggable, always-on-top pill displaying current time and status.
+- **Camera calibration:** An optional preview window shows head pose vectors and facial landmarks to help you verify camera angles and thresholds.
+- **Audio alerts:** Generates tone chimes for session completion, phase changes, and distraction reminders using the Python standard library.
+- **Daily statistics:** Logs daily focused time, distraction time, focus percentage, and completed Pomodoro rounds to a local JSON file.
 
 ---
 
-## 🛠️ Architecture & Tech Stack
+## Tech stack
 
-* **Language:** Python 3.8+ (Compatible with Python 3.8 – 3.13+)
-* **GUI Framework:** Standard Library Tkinter & TTK with High-DPI scaling
-* **Computer Vision:** OpenCV (`cv2`) & MediaPipe (Dual support for Tasks API and Solutions API)
-* **Audio Engine:** Programmatic acoustic synthesis via built-in `wave` and Windows `winsound`
-* **Storage:** Local offline `focus_data.json`
+- **Language:** Python 3.8 to 3.13
+- **Interface:** Tkinter and ttk with Windows high-DPI scaling
+- **Vision:** OpenCV and MediaPipe (supports both Tasks and legacy Solutions APIs)
+- **Audio:** Python wave module and Windows winsound
+- **Storage:** Local JSON (`focus_data.json`)
 
-### Project Structure
+### Project structure
 
 ```
 focus-widget/
-├── main.py             # Main dashboard, UI lifecycle & state machine
-├── cv_tracker.py       # 3D Head pose (solvePnP), iris gaze, debounce & calibration
-├── mini_widget.py      # Frameless draggable always-on-top floating pill widget
-├── audio_alerts.py     # Synthesized audio chimes & async playback
-├── storage.py          # Local JSON settings & daily session statistics
-├── requirements.txt    # opencv-python, mediapipe, Pillow
-└── icon.ico            # Application icon
+├── main.py             # UI, timer state machine, and application entry point
+├── cv_tracker.py       # Face mesh, solvePnP head pose, and gaze tracking
+├── mini_widget.py      # Floating, draggable compact overlay
+├── audio_alerts.py     # Audio chime synthesis and playback
+├── storage.py          # Configuration and daily statistics storage
+├── requirements.txt    # Python dependencies
+└── icon.ico            # App icon
 ```
 
 ---
 
-## 🚀 Getting Started
+## Getting started
 
-### Prerequisites
+### Requirements
 
-You need Python installed (Python 3.8 – 3.13 recommended).
+Python 3.10 through 3.13 is recommended.
 
 ```bash
-# Clone the repository
 git clone https://github.com/meytiii/focus-widget.git
 cd focus-widget
 
-# Install dependencies
-pip install -r requirements.txt
+python -m venv venv
+.\venv\Scripts\activate
 
-# Launch Focus Widget
+pip install -r requirements.txt
 python main.py
 ```
 
 ---
 
-## 🎮 How to Use
+## Usage
 
-1. **Select a Mode:** Choose **Stopwatch**, **Pomodoro**, or **Countdown** from the top mode bar.
-2. **Start Working:** Click **START ▶**. Look at your screen—the widget glows green and marks you **FOCUSED**.
-3. **Turn Away:** If you turn your head or leave your desk for longer than 2 seconds, the widget flags **DISTRACTED** and pauses.
-4. **Mini Mode:** Click `🗗` in the top right to shrink the widget into a floating desktop pill while you work.
-5. **Calibrate:** Click `📷` to open the live 3D pose view and check your angles in real time.
-6. **Customize:** Click `⚙` to adjust Pomodoro durations, sensitivity thresholds, grace periods, or audio toggles.
+1. **Pick a mode:** Select Stopwatch, Pomodoro, or Countdown from the mode bar.
+2. **Start the session:** Click Start. When the camera detects your face facing the monitor, the status shows Focused.
+3. **Pausing:** Looking away or turning your head beyond the configured thresholds for more than 2 seconds marks you as Distracted and halts the clock.
+4. **Mini mode:** Click the window icon in the top-right header to switch to the floating desktop pill. Click the expand button on the pill to restore the full window.
+5. **Calibrate:** Click the camera icon to open the calibration tool and check your detection angles in real time.
+6. **Settings:** Click the gear icon to modify Pomodoro intervals, angle tolerances, the grace period, or sound settings.
 
 ---
 
-## 📄 License
+## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT. See [LICENSE](LICENSE) for details.
